@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Codebase Reporter - Genereert een markdown rapport van je codebase
-# Gebruik: ./codebase-report.sh [directory] [output-file] [--no-markdown]
+# Codebase Reporter - Generates markdown reports of your codebase
+# Usage: ./codebase-report.sh [directory] [output-file] [options]
 
-# Parse argumenten
+# Parse arguments
 TARGET_DIR="."
 OUTPUT_FILE="codebase-report.md"
 CREATE_MARKDOWN=false
@@ -15,16 +15,16 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "Gebruik: $0 [directory] [options]"
-            echo "Opties:"
-            echo "  --markdown       Maak ook een markdown bestand"
-            echo "  --help, -h       Toon deze help"
+            echo "Usage: $0 [directory] [options]"
+            echo "Options:"
+            echo "  --markdown       Also create markdown file"
+            echo "  --help, -h       Show this help"
             echo ""
-            echo "Standaard: kopieert alleen naar clipboard"
+            echo "Default: copies only to clipboard"
             exit 0
             ;;
         -*)
-            echo "Onbekende optie: $1"
+            echo "Unknown option: $1"
             exit 1
             ;;
         *)
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Bestanden die we willen negeren (gebaseerd op je TypeScript config)
+# Files to ignore
 IGNORE_PATTERNS=(
     "node_modules"
     "dist"
@@ -88,7 +88,7 @@ IGNORE_PATTERNS=(
     "htmlcov"
 )
 
-# Extensies die we willen includeren + specifieke bestanden
+# Extensions to include
 INCLUDE_EXTENSIONS=(
     "ts" "tsx" "js" "jsx"
     "json" "yml" "yaml"
@@ -99,7 +99,7 @@ INCLUDE_EXTENSIONS=(
     "sql" "xml" "toml"
 )
 
-# Specifieke bestanden die we altijd willen includeren
+# Specific files to always include
 INCLUDE_FILES=(
     "requirements.txt"
     "pyproject.toml"
@@ -110,7 +110,7 @@ INCLUDE_FILES=(
     "Makefile"
 )
 
-# Functie om te checken of een bestand genegeerd moet worden
+# Function to check if a file should be ignored
 should_ignore() {
     local file="$1"
     for pattern in "${IGNORE_PATTERNS[@]}"; do
@@ -121,21 +121,21 @@ should_ignore() {
     return 1
 }
 
-# Functie om te checken of een extensie geïncludeerd moet worden
+# Function to check if an extension should be included
 should_include_extension() {
     local file="$1"
     local ext="${file##*.}"
     local basename=$(basename "$file")
     ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
     
-    # Check specifieke bestanden eerst
+    # Check specific files first
     for allowed_file in "${INCLUDE_FILES[@]}"; do
         if [[ "$basename" == "$allowed_file" ]]; then
             return 0
         fi
     done
     
-    # Check extensies
+    # Check extensions
     for allowed_ext in "${INCLUDE_EXTENSIONS[@]}"; do
         if [[ "$ext" == "$allowed_ext" ]]; then
             return 0
@@ -144,31 +144,7 @@ should_include_extension() {
     return 1
 }
 
-# Bepaal output bestemming
-if [[ "$CREATE_MARKDOWN" == true ]]; then
-    echo "📝 Genereren naar: $OUTPUT_FILE + clipboard"
-else
-    OUTPUT_FILE=$(mktemp)
-    echo "📋 Alleen kopiëren naar clipboard..."
-fi
-
-# Start het rapport
-echo "# Codebase Documentation" > "$OUTPUT_FILE"
-echo "" >> "$OUTPUT_FILE"
-echo "Generated on: $(date -Iseconds)" >> "$OUTPUT_FILE"
-echo "Directory: $(realpath "$TARGET_DIR")" >> "$OUTPUT_FILE"
-echo "" >> "$OUTPUT_FILE"
-
-# Genereer mappenstructuur
-echo "## 📁 Directory Structure" >> "$OUTPUT_FILE"
-echo "" >> "$OUTPUT_FILE"
-echo '```' >> "$OUTPUT_FILE"
-
-# Gebruik tree als het beschikbaar is, anders een alternatief
-if command -v tree &> /dev/null; then
-    tree "$TARGET_DIR" -I "$(IFS='|'; echo "${IGNORE_PATTERNS[*]}")" >> "$OUTPUT_FILE"
-else
-# Betere tree functie die alleen ASCII gebruikt
+# Generate clean tree function using ASCII only
 generate_clean_tree() {
     local dir="$1"
     local prefix="$2"
@@ -176,7 +152,7 @@ generate_clean_tree() {
     
     local items=()
     
-    # Verzamel alle items
+    # Collect all items
     for item in "$dir"/*; do
         if [[ -e "$item" ]]; then
             local basename=$(basename "$item")
@@ -186,7 +162,7 @@ generate_clean_tree() {
         fi
     done
     
-    # Sorteer items (directories eerst)
+    # Sort items (directories first)
     local sorted_items=()
     for item in "${items[@]}"; do
         if [[ -d "$item" ]]; then
@@ -219,71 +195,81 @@ generate_clean_tree() {
         fi
     done
 }
+
+# Determine output destination
+if [[ "$CREATE_MARKDOWN" == true ]]; then
+    echo "📝 Generating to: $OUTPUT_FILE + clipboard"
+else
+    OUTPUT_FILE=$(mktemp)
+    echo "📋 Copying to clipboard only..."
+fi
+
+# Start the report
+echo "# Codebase Documentation" > "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+echo "Generated on: $(date -Iseconds)" >> "$OUTPUT_FILE"
+echo "Directory: $(realpath "$TARGET_DIR")" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+# Generate directory structure
+echo "## Directory Structure" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+echo '```' >> "$OUTPUT_FILE"
+
+# Use tree if available, otherwise use our function
+if command -v tree &> /dev/null; then
+    # Use tree with ASCII characters and filter patterns
+    tree "$TARGET_DIR" -a -I "$(IFS='|'; echo "${IGNORE_PATTERNS[*]}")" --charset=ascii >> "$OUTPUT_FILE"
+else
+    # Use our own tree function
+    echo "$(basename "$TARGET_DIR")/" >> "$OUTPUT_FILE"
+    generate_clean_tree "$TARGET_DIR" "" false
 fi
 
 echo '```' >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
-# Genereer bestandsinhoud
-echo "## 📄 File Contents" >> "$OUTPUT_FILE"
+# Generate file contents
+echo "## File Contents" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
-# Teller voor files
+# Counter for files
 file_count=0
 total_files=$(find "$TARGET_DIR" -type f | wc -l)
 
 echo "📊 Processing files..."
 
-# Vind alle relevante bestanden
+# Find all relevant files
 find "$TARGET_DIR" -type f | while read -r file; do
-    # Skip als het bestand genegeerd moet worden
+    # Skip if file should be ignored
     if should_ignore "$file"; then
         continue
     fi
     
-    # Skip als de extensie niet geïncludeerd moet worden
+    # Skip if extension should not be included
     if ! should_include_extension "$file"; then
         continue
     fi
     
-    # Skip binaire bestanden
+    # Skip binary files
     if file "$file" | grep -q "binary"; then
         continue
     fi
     
-    # Relatief pad
+    # Relative path
     rel_path="${file#$TARGET_DIR/}"
     if [[ "$rel_path" == "$file" ]]; then
         rel_path="$(basename "$file")"
     fi
     
-    # Verhoog teller en toon voortgang
+    # Increment counter and show progress
     ((file_count++))
     echo "  [$file_count] Processing: $rel_path"
     
     echo "### $rel_path" >> "$OUTPUT_FILE"
     echo "" >> "$OUTPUT_FILE"
     
-    # File info toevoegen (zoals in je TypeScript versie)
-    file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
-    if [[ "$file_size" != "unknown" ]]; then
-        if [[ "$file_size" -lt 1024 ]]; then
-            size_display="${file_size} B"
-        elif [[ "$file_size" -lt 1048576 ]]; then
-            size_display="$((file_size / 1024)) KB"
-        else
-            size_display="$((file_size / 1048576)) MB"
-        fi
-    else
-        size_display="unknown"
-    fi
-    
-    mod_date=$(stat -f%Sm -t%Y-%m-%d "$file" 2>/dev/null || stat -c%y "$file" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
-    
-    echo "**Size:** $size_display | **Language:** $lang | **Modified:** $mod_date" >> "$OUTPUT_FILE"
-    echo "" >> "$OUTPUT_FILE"
-    
-    # Detecteer programmeertaal voor syntax highlighting
+    # Detect programming language for syntax highlighting
     ext="${file##*.}"
     ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
     
@@ -310,6 +296,25 @@ find "$TARGET_DIR" -type f | while read -r file; do
         *) lang="text" ;;
     esac
     
+    # Add file info
+    file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
+    if [[ "$file_size" != "unknown" ]]; then
+        if [[ "$file_size" -lt 1024 ]]; then
+            size_display="${file_size} B"
+        elif [[ "$file_size" -lt 1048576 ]]; then
+            size_display="$((file_size / 1024)) KB"
+        else
+            size_display="$((file_size / 1048576)) MB"
+        fi
+    else
+        size_display="unknown"
+    fi
+    
+    mod_date=$(stat -f%Sm -t%Y-%m-%d "$file" 2>/dev/null || stat -c%y "$file" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
+    
+    echo "**Size:** $size_display | **Language:** $lang | **Modified:** $mod_date" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+    
     echo "\`\`\`$lang" >> "$OUTPUT_FILE"
     cat "$file" >> "$OUTPUT_FILE"
     echo "" >> "$OUTPUT_FILE"
@@ -320,42 +325,42 @@ done
 echo ""
 echo "📈 Summary:"
 echo "  • Total files processed: $file_count"
-if [[ "$NO_MARKDOWN" == false ]]; then
+if [[ "$CREATE_MARKDOWN" == true ]]; then
     echo "  • Output file: $OUTPUT_FILE"
     echo "  • File size: $(du -h "$OUTPUT_FILE" | cut -f1)"
     echo ""
-    echo "✅ Rapport gegenereerd: $OUTPUT_FILE"
+    echo "✅ Report generated: $OUTPUT_FILE"
 else
-    echo "  • Mode: alleen clipboard"
+    echo "  • Mode: clipboard only"
     echo ""
-    echo "✅ Rapport klaar voor clipboard"
+    echo "✅ Report ready for clipboard"
 fi
 
-# Kopieer naar clipboard
+# Copy to clipboard
 if command -v pbcopy &> /dev/null; then
     # macOS
     cat "$OUTPUT_FILE" | pbcopy
-    echo "📋 Rapport gekopieerd naar clipboard (macOS)"
+    echo "📋 Report copied to clipboard (macOS)"
 elif command -v xclip &> /dev/null; then
-    # Linux met xclip
+    # Linux with xclip
     cat "$OUTPUT_FILE" | xclip -selection clipboard
-    echo "📋 Rapport gekopieerd naar clipboard (Linux - xclip)"
+    echo "📋 Report copied to clipboard (Linux - xclip)"
 elif command -v xsel &> /dev/null; then
-    # Linux met xsel
+    # Linux with xsel
     cat "$OUTPUT_FILE" | xsel --clipboard --input
-    echo "📋 Rapport gekopieerd naar clipboard (Linux - xsel)"
+    echo "📋 Report copied to clipboard (Linux - xsel)"
 elif command -v clip.exe &> /dev/null; then
     # Windows (WSL)
     cat "$OUTPUT_FILE" | clip.exe
-    echo "📋 Rapport gekopieerd naar clipboard (Windows/WSL)"
+    echo "📋 Report copied to clipboard (Windows/WSL)"
 else
-    echo "⚠️  Clipboard tool niet gevonden. Installeer pbcopy (macOS), xclip/xsel (Linux), of gebruik WSL (Windows)"
-    if [[ "$NO_MARKDOWN" == false ]]; then
-        echo "Je kunt het bestand handmatig kopiëren: $OUTPUT_FILE"
+    echo "⚠️  Clipboard tool not found. Install pbcopy (macOS), xclip/xsel (Linux), or use WSL (Windows)"
+    if [[ "$CREATE_MARKDOWN" == true ]]; then
+        echo "You can manually copy the file: $OUTPUT_FILE"
     fi
 fi
 
-# Ruim tijdelijk bestand op als --no-markdown gebruikt werd
-if [[ "$NO_MARKDOWN" == true ]]; then
+# Clean up temporary file if no markdown was created
+if [[ "$CREATE_MARKDOWN" == false ]]; then
     rm -f "$OUTPUT_FILE"
 fi
