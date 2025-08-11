@@ -7,6 +7,7 @@
 TARGET_DIR="."
 OUTPUT_FILE="codebase-report.md"
 CREATE_MARKDOWN=false
+FOLDER_STRUCTURE_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -14,11 +15,16 @@ while [[ $# -gt 0 ]]; do
             CREATE_MARKDOWN=true
             shift
             ;;
+        --folder_structure_only)
+            FOLDER_STRUCTURE_ONLY=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [directory] [options]"
             echo "Options:"
-            echo "  --markdown       Also create markdown file"
-            echo "  --help, -h       Show this help"
+            echo "  --markdown              Also create markdown file"
+            echo "  --folder_structure_only Only generate directory structure"
+            echo "  --help, -h              Show this help"
             echo ""
             echo "Default: copies only to clipboard"
             exit 0
@@ -72,6 +78,8 @@ IGNORE_PATTERNS=(
     "rollup.config.*"
     "babel.config.*"
     ".babelrc*"
+    "data"
+    "output"
     "LICENSE*"
     "README*"
     "CHANGELOG*"
@@ -198,21 +206,37 @@ generate_clean_tree() {
 
 # Determine output destination
 if [[ "$CREATE_MARKDOWN" == true ]]; then
-    echo "📝 Generating to: $OUTPUT_FILE + clipboard"
+    if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+        echo "📁 Generating folder structure to: $OUTPUT_FILE + clipboard"
+    else
+        echo "📝 Generating to: $OUTPUT_FILE + clipboard"
+    fi
 else
     OUTPUT_FILE=$(mktemp)
-    echo "📋 Copying to clipboard only..."
+    if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+        echo "📁 Copying folder structure to clipboard only..."
+    else
+        echo "📋 Copying to clipboard only..."
+    fi
 fi
 
 # Start the report
-echo "# Codebase Documentation" > "$OUTPUT_FILE"
+if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+    echo "# Directory Structure" > "$OUTPUT_FILE"
+else
+    echo "# Codebase Documentation" > "$OUTPUT_FILE"
+fi
 echo "" >> "$OUTPUT_FILE"
 echo "Generated on: $(date -Iseconds)" >> "$OUTPUT_FILE"
 echo "Directory: $(realpath "$TARGET_DIR")" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 # Generate directory structure
-echo "## Directory Structure" >> "$OUTPUT_FILE"
+if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+    echo "## Structure" >> "$OUTPUT_FILE"
+else
+    echo "## Directory Structure" >> "$OUTPUT_FILE"
+fi
 echo "" >> "$OUTPUT_FILE"
 echo '```' >> "$OUTPUT_FILE"
 
@@ -229,111 +253,135 @@ fi
 echo '```' >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
-# Generate file contents
-echo "## File Contents" >> "$OUTPUT_FILE"
-echo "" >> "$OUTPUT_FILE"
-
-# Counter for files
-file_count=0
-total_files=$(find "$TARGET_DIR" -type f | wc -l)
-
-echo "📊 Processing files..."
-
-# Find all relevant files
-find "$TARGET_DIR" -type f | while read -r file; do
-    # Skip if file should be ignored
-    if should_ignore "$file"; then
-        continue
-    fi
-    
-    # Skip if extension should not be included
-    if ! should_include_extension "$file"; then
-        continue
-    fi
-    
-    # Skip binary files
-    if file "$file" | grep -q "binary"; then
-        continue
-    fi
-    
-    # Relative path
-    rel_path="${file#$TARGET_DIR/}"
-    if [[ "$rel_path" == "$file" ]]; then
-        rel_path="$(basename "$file")"
-    fi
-    
-    # Increment counter and show progress
-    ((file_count++))
-    echo "  [$file_count] Processing: $rel_path"
-    
-    echo "### $rel_path" >> "$OUTPUT_FILE"
+# Generate file contents only if not folder structure only
+if [[ "$FOLDER_STRUCTURE_ONLY" == false ]]; then
+    echo "## File Contents" >> "$OUTPUT_FILE"
     echo "" >> "$OUTPUT_FILE"
-    
-    # Detect programming language for syntax highlighting
-    ext="${file##*.}"
-    ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
-    
-    case "$ext" in
-        js|jsx) lang="javascript" ;;
-        ts|tsx) lang="typescript" ;;
-        py) lang="python" ;;
-        java) lang="java" ;;
-        cpp|c|h) lang="cpp" ;;
-        html) lang="html" ;;
-        css|scss|sass) lang="css" ;;
-        php) lang="php" ;;
-        rb) lang="ruby" ;;
-        go) lang="go" ;;
-        rs) lang="rust" ;;
-        swift) lang="swift" ;;
-        vue) lang="vue" ;;
-        dart) lang="dart" ;;
-        sql) lang="sql" ;;
-        sh|bash) lang="bash" ;;
-        json) lang="json" ;;
-        yaml|yml) lang="yaml" ;;
-        md) lang="markdown" ;;
-        *) lang="text" ;;
-    esac
-    
-    # Add file info
-    file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
-    if [[ "$file_size" != "unknown" ]]; then
-        if [[ "$file_size" -lt 1024 ]]; then
-            size_display="${file_size} B"
-        elif [[ "$file_size" -lt 1048576 ]]; then
-            size_display="$((file_size / 1024)) KB"
-        else
-            size_display="$((file_size / 1048576)) MB"
+
+    # Counter for files
+    file_count=0
+    total_files=$(find "$TARGET_DIR" -type f | wc -l)
+
+    echo "📊 Processing files..."
+
+    # Find all relevant files
+    find "$TARGET_DIR" -type f | while read -r file; do
+        # Skip if file should be ignored
+        if should_ignore "$file"; then
+            continue
         fi
-    else
-        size_display="unknown"
-    fi
-    
-    mod_date=$(stat -f%Sm -t%Y-%m-%d "$file" 2>/dev/null || stat -c%y "$file" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
-    
-    echo "**Size:** $size_display | **Language:** $lang | **Modified:** $mod_date" >> "$OUTPUT_FILE"
-    echo "" >> "$OUTPUT_FILE"
-    
-    echo "\`\`\`$lang" >> "$OUTPUT_FILE"
-    cat "$file" >> "$OUTPUT_FILE"
-    echo "" >> "$OUTPUT_FILE"
-    echo '```' >> "$OUTPUT_FILE"
-    echo "" >> "$OUTPUT_FILE"
-done
+        
+        # Skip if extension should not be included
+        if ! should_include_extension "$file"; then
+            continue
+        fi
+        
+        # Skip binary files
+        if file "$file" | grep -q "binary"; then
+            continue
+        fi
+        
+        # Relative path
+        rel_path="${file#$TARGET_DIR/}"
+        if [[ "$rel_path" == "$file" ]]; then
+            rel_path="$(basename "$file")"
+        fi
+        
+        # Increment counter and show progress
+        ((file_count++))
+        echo "  [$file_count] Processing: $rel_path"
+        
+        echo "### $rel_path" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+        
+        # Detect programming language for syntax highlighting
+        ext="${file##*.}"
+        ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+        
+        case "$ext" in
+            js|jsx) lang="javascript" ;;
+            ts|tsx) lang="typescript" ;;
+            py) lang="python" ;;
+            java) lang="java" ;;
+            cpp|c|h) lang="cpp" ;;
+            html) lang="html" ;;
+            css|scss|sass) lang="css" ;;
+            php) lang="php" ;;
+            rb) lang="ruby" ;;
+            go) lang="go" ;;
+            rs) lang="rust" ;;
+            swift) lang="swift" ;;
+            vue) lang="vue" ;;
+            dart) lang="dart" ;;
+            sql) lang="sql" ;;
+            sh|bash) lang="bash" ;;
+            json) lang="json" ;;
+            yaml|yml) lang="yaml" ;;
+            md) lang="markdown" ;;
+            *) lang="text" ;;
+        esac
+        
+        # Add file info
+        file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
+        if [[ "$file_size" != "unknown" ]]; then
+            if [[ "$file_size" -lt 1024 ]]; then
+                size_display="${file_size} B"
+            elif [[ "$file_size" -lt 1048576 ]]; then
+                size_display="$((file_size / 1024)) KB"
+            else
+                size_display="$((file_size / 1048576)) MB"
+            fi
+        else
+            size_display="unknown"
+        fi
+        
+        mod_date=$(stat -f%Sm -t%Y-%m-%d "$file" 2>/dev/null || stat -c%y "$file" 2>/dev/null | cut -d' ' -f1 || echo "unknown")
+        
+        echo "**Size:** $size_display | **Language:** $lang | **Modified:** $mod_date" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+        
+        echo "\`\`\`$lang" >> "$OUTPUT_FILE"
+        cat "$file" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+        echo '```' >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+    done
 
-echo ""
-echo "📈 Summary:"
-echo "  • Total files processed: $file_count"
+    echo ""
+    echo "📈 Summary:"
+    echo "  • Total files processed: $file_count"
+fi
+
+# Summary output
+if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+    echo ""
+    echo "📁 Summary:"
+    echo "  • Mode: folder structure only"
+else
+    if [[ "$FOLDER_STRUCTURE_ONLY" == false ]]; then
+        echo ""
+        echo "📈 Summary:"
+        echo "  • Total files processed: $file_count"
+    fi
+fi
+
 if [[ "$CREATE_MARKDOWN" == true ]]; then
     echo "  • Output file: $OUTPUT_FILE"
     echo "  • File size: $(du -h "$OUTPUT_FILE" | cut -f1)"
     echo ""
-    echo "✅ Report generated: $OUTPUT_FILE"
+    if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+        echo "✅ Folder structure report generated: $OUTPUT_FILE"
+    else
+        echo "✅ Report generated: $OUTPUT_FILE"
+    fi
 else
     echo "  • Mode: clipboard only"
     echo ""
-    echo "✅ Report ready for clipboard"
+    if [[ "$FOLDER_STRUCTURE_ONLY" == true ]]; then
+        echo "✅ Folder structure report ready for clipboard"
+    else
+        echo "✅ Report ready for clipboard"
+    fi
 fi
 
 # Copy to clipboard
